@@ -39,7 +39,7 @@ class _WrapperState extends State<Wrapper> with TickerProviderStateMixin {
 
     Future.delayed(
         const Duration(
-          seconds: 10,
+          seconds: 1,
         ), () {
       setState(() {
         _showSplash = false;
@@ -121,11 +121,24 @@ class _WrapperState extends State<Wrapper> with TickerProviderStateMixin {
           _isLoading = false;
         });
       });
-      return const Scaffold(
-        body: Center(
-          child: Loading(
-            msg: 'Authenticating...',
-          ),
+      return Scaffold(
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            const Loading(
+              msg: 'Authenticating...',
+            ),
+            TextButton(
+              onPressed: (){
+                setState((){
+                  _isLoading = false;
+                });
+              },
+              child: const Text(
+                  "Terminate process."
+              ),
+            )
+          ],
         ),
       );
     }

@@ -1,16 +1,122 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_isolate/flutter_isolate.dart';
 import 'package:http/http.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:telephony/telephony.dart';
+import 'package:sms_listener/sms_listener.dart';
 import '../packages/http_requests.dart';
 import '../shared/constraints.dart';
 import '../widgets/info.dart';
 import '../widgets/loading.dart';
 import '../widgets/toast.dart';
 import 'incoming/auto_replies.dart';
+
+@pragma('vm:entry-point')
+void smsIsolate(String arg) async {
+  SmsListener listener = SmsListener();
+  listener.onReceive((Message newMessage) {
+    print("message: ${newMessage.message} sender: ${newMessage.sender}");
+    Toast.showToast(msg: "message: ${newMessage.message} sender: ${newMessage.sender}");
+
+
+  }, errorCallback: (PlatformException exception) {
+
+  });
+
+  HttpRequests.headers["Authorization"] = "Bearer $arg";
+
+  String sms        = 'no sms received';
+  String? sender    = 'no sms received';
+  bool hasSplit     = false;
+  String time       = 'no sms received';
+
+  String message    = "";
+  // String? body     = sms.body;
+  // String? sender  = sms.address;
+  // int? nTime    = sms.date;
+
+  try{
+    sender    = sender?.split('+')[1];
+    hasSplit  = true;
+  }catch(e){
+    hasSplit = false;
+  }
+
+  if(hasSplit) {
+    // DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(nTime!);
+    Map<String, dynamic> data = {
+      'sender': sender,
+      'sms':    message,
+      // 'time':   dateTime,
+    };
+    print(data);
+    // HttpRequests.post(uri: "/interact", data: data).then((value) {
+    //   Response response = value;
+    //   var body = json.decode(response.body);
+    //   Toast.showToast(msg: body['message']);
+    // });
+  }else{
+    Toast.showToast(msg: "Sender ID is not in numbers.");
+  }
+
+
+  // plugin.read();
+  // plugin.smsStream.listen((event) {print("mesage: ${event.body} sender: ${event.sender}");
+  //   //Used to handle preceeding segments to wait if this incoming message is longer than 160 characters and comes in segments
+  //   //canDispatch = false;
+  //
+  //   sms     = event.body;
+  //   sender  = event.sender;
+  //   time    = event.timeReceived.toString();
+  //
+  //   try{
+  //     sender    = sender?.split('+')[1];
+  //     hasSplit  = true;
+  //   }catch(e){
+  //     hasSplit = false;
+  //   }
+  //
+  //   if(hasSplit) {
+  //     //Concatenates segments of a long message if it exists
+  //     message += sms;
+  //     // queuedSender = sender;
+  //     // Timer(const Duration(microseconds: 0,), () {
+  //     //   //After waiting long message segments allow to dispatch to the server
+  //     //   canDispatch = true;
+  //     //
+  //     //   //This ensures second and more segments messages are to dispatched because they become empty after they concatenated to the preceding segments
+  //     //   if(canDispatch && (message != "")){
+  //     //     Map<String, dynamic> data = {
+  //     //       'sender': sender,
+  //     //       'sms':    message,
+  //     //       'time':   time,
+  //     //     };
+  //     //     //We set it to empty string because we want to avoid concatenating preceding messages with other senders messages
+  //     //     message = "";
+  //     //
+  //     //     HttpRequests.post(uri: "/interact", data: data).then((value) {
+  //     //       Response response = value;
+  //     //       var body = json.decode(response.body);
+  //     //       Toast.showToast(msg: body['message']);
+  //     //     });
+  //     //     //After dispatching messages we need ensure no other messages can be dispatched unless they are verified after a millisecond
+  //     //     canDispatch = false;
+  //     //   }
+  //     // });
+  //   }else{
+  //     Toast.showToast(msg: "Sender ID is not in numbers.");
+  //   }
+  // });
+}
+
+// @pragma('vm:entry-point')
+// void handleBackgroundSms(SmsMessage sms){
+//   Toast.showToast(msg: "Background: ${HttpRequests.token}");
+// }
 
 class Incoming extends StatefulWidget{
   @override
@@ -23,14 +129,14 @@ class Incoming extends StatefulWidget{
 
 class _Home extends State<Incoming> with TickerProviderStateMixin{
   //Instances
-  final telephony = Telephony.instance;
+  // final telephony = Telephony.instance;
   static late SharedPreferences _sharedPreferences;
 
   String display = "dashboard";
   String show = "Feed";
   String _progressMsg = "";
   bool _isLoading = false;
-  static bool _isReceivingSMS = false;
+  bool _isReceivingSMS = false;
 
   Map<String, dynamic> resData = {};
 
@@ -61,22 +167,24 @@ class _Home extends State<Incoming> with TickerProviderStateMixin{
     }
   }
 
-  void initTelephonyInstance() async {
-    getPermission().then((value){
-      if(value){
-        telephony.listenIncomingSms(
-            onNewMessage: foregroundMessage,
-            onBackgroundMessage: backgroundMessage,
-        );
-      }
-    });
-  }
+  late FlutterIsolate smsProcess;
+  bool hasPermissions = false;
 
   @override
   void initState() {
     super.initState();
     _getSharedPreferences();
-    initTelephonyInstance();
+    getPermission().then((value) async {
+      if(value){
+        hasPermissions = value;
+        if(_isReceivingSMS && hasPermissions){
+          String token = HttpRequests.token;
+          smsProcess = await FlutterIsolate.spawn(smsIsolate, token);
+
+
+        }
+      }
+    });
   }
 
   void _getSharedPreferences() async {
@@ -86,67 +194,6 @@ class _Home extends State<Incoming> with TickerProviderStateMixin{
     }catch(e){
       _sharedPreferences.setBool("receives", false);
     }
-  }
-
-  static void _receiveSMS(SmsMessage receivedSms) async {
-    var shared = await SharedPreferences.getInstance();
-    bool isReceiving = false;
-
-    try{
-      isReceiving = shared.getBool("receives")!;
-    }catch(e){
-      isReceiving = false;
-      shared.setBool("receives", isReceiving);
-    }
-
-    print(isReceiving);
-
-    String? sms       = 'no sms received';
-    String? sender    = 'no sms received';
-    int? time         = 0;
-
-    sms     = receivedSms.body;
-    bool hasSplit = false;
-    try{
-      sender  = receivedSms.address?.split('+')[1];
-      hasSplit = true;
-    }catch(e){
-      hasSplit = false;
-    }
-
-    time    = receivedSms.date;
-    DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(time!);
-
-    Map<String, dynamic> data = {
-      'sender': sender,
-      'sms':    sms,
-      'time':   dateTime.toString(),
-    };
-
-    if(hasSplit) {
-      HttpRequests.prepareGateway();
-      HttpRequests.checkAuth().then((value) {
-        if(value){
-          HttpRequests.post(uri: "/interact", data: data).then((value) {
-            Response response = value;
-            var body = json.decode(response.body);
-            Toast.showToast(msg: body['message']);
-          });
-        }
-      });
-    }
-  }
-
-  static void foregroundMessage(SmsMessage sms) {
-    if(_isReceivingSMS){
-      _receiveSMS(sms);
-    }
-    print("foreground");
-  }
-
-  static void backgroundMessage(SmsMessage sms) {
-    _receiveSMS(sms);
-    print("background");
   }
 
   Future<void> _getSenders() async {
@@ -191,6 +238,7 @@ class _Home extends State<Incoming> with TickerProviderStateMixin{
                 onPressed: () async {
                   setState(() {
                     _isLoading = !_isLoading;
+                    _progressMsg = "Logging out!";
                   });
                   await HttpRequests.get(uri: "/logout");
 
@@ -291,16 +339,32 @@ class _Home extends State<Incoming> with TickerProviderStateMixin{
                     Center(
                       child: ElevatedButton(
                         child: (_isReceivingSMS)?const Text("Stop Receiving"):const Text("Receive SMS"),
-                        onPressed: (){
+                        onPressed: () async {
                           setState(() {
-                            if(_currentSender.isNotEmpty){
-                              _isReceivingSMS = !_isReceivingSMS;
-                              _sharedPreferences.setBool("receives", _isReceivingSMS);
+                            _isLoading = true;
+                            _progressMsg = "We're booting up.";
+                          });
+
+                          if(_currentSender.isNotEmpty){
+                            _isReceivingSMS = !_isReceivingSMS;
+                            _sharedPreferences.setBool("receives", _isReceivingSMS);
+
+                            if(_isReceivingSMS && hasPermissions){
+                              String msg = "VLL App has started listening to SMS in the background.";
+                              String token = HttpRequests.token;
+                              smsProcess = await FlutterIsolate.spawn(smsIsolate, token);
+                              Toast.showToast(msg: msg);
                             }else{
-                              _progressMsg = "Please attach sender ID to this account.";
-                              SnackBar snackBar = Info.snackBar(_progressMsg);
-                              ScaffoldMessenger.of(context).showSnackBar(snackBar);
+                              smsProcess.kill();
                             }
+                          }else{
+                            _progressMsg = "Please attach sender ID to this account.";
+                            SnackBar snackBar = Info.snackBar(_progressMsg);
+                            ScaffoldMessenger.of(context).showSnackBar(snackBar);
+                          }
+
+                          setState(() {
+                            _isLoading = false;
                           });
                         },
                       ),

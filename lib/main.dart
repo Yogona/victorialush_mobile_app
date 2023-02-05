@@ -4,6 +4,7 @@ import 'package:vll_mobile_app/shared/themes.dart';
 import 'package:vll_mobile_app/wrapper.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     title: 'VLL Mobile App',

@@ -21,20 +21,18 @@ class HttpRequests{
   // static const String _host      = "192.168.1.146";
   // static const String _port      = "8000";
 
-  static String _gateWay = "";
-  static int timeout = 15000;
+  static const String _gateWay = "$_protocol$_host:$_port/api/v1";
+  static int timeout = 30000;
   static Response response = Response("Bad request", 400);
 
   static void prepareGateway(){
-    _gateWay = "$_protocol$_host:$_port/api/v1";
   }
 
   static Future<bool> checkAuth() async {
-    // bool success = await FlutterBackground.initialize(androidConfig: androidConfig);
     var shared = await SharedPreferences.getInstance();
 
     try {
-      String token = shared.getString("token")!;
+      token = shared.getString("token")!;
       headers["Authorization"] = "Bearer $token";
       Toast.showToast(msg: headers['Authorization']);
     } catch (exc) {
@@ -46,7 +44,7 @@ class HttpRequests{
     bool isConnected = await InternetConnectionChecker().hasConnection;
 
     if(isConnected){
-      Response response = await HttpRequests.get(uri: "/user");
+      response = await HttpRequests.get(uri: "/user");
       Toast.showToast(msg: response.body);
       if(response.statusCode == 200){
         Toast.showToast(msg: "Success");
@@ -81,9 +79,11 @@ class HttpRequests{
     try{
       var url = Uri.parse("$_gateWay$uri");
       //var startTime = DateTime.now().millisecondsSinceEpoch;
-      var response = await http.get(url, headers: headers).timeout(
+      response = await http.get(url, headers: headers).timeout(
         Duration(milliseconds: timeout), onTimeout: (){
-          Toast.showToast(msg: "Connection timed out!"); return Response("Connection timed out!", 408);
+          Toast.showToast(msg: "Connection timed out!");
+          response = Response("Connection timed out!", 408);
+          return response;
         }
       );
 

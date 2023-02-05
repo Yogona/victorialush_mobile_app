@@ -128,12 +128,12 @@ class _LoginState extends State<Login> with TickerProviderStateMixin{
                       }else{
                         data = json.decode(response.body);
                         if(response.statusCode == 200){
-
                           _temp = data["data"];
                           String token = _temp["token"];
                           SharedPreferences.getInstance().then((value){
                             value.setString("token", token);
                           });
+                          HttpRequests.token = token;
                           HttpRequests.headers["Authorization"] = "Bearer $token";
 
                           _temp = _temp["user"];
